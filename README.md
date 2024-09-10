@@ -6,6 +6,14 @@ This is an **unofficial** dockerized api server that wraps around Mem0's [open-s
 
 This project requires an OpenAI API key to work. Support for other providers is not implemented yet.
 
+### Neo4j Configuration
+
+This project now supports graph memory using Neo4j. To use this feature:
+
+1. Ensure you have set the `NEO4J_USERNAME` and `NEO4J_PASSWORD` in your `.env` file.
+2. The Neo4j database will be automatically set up when you run `docker compose up`.
+3. You can access the Neo4j browser at `http://localhost:7474` for database management and visualization.
+
 First,
 
 ```

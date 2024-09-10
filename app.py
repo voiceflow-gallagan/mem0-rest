@@ -3,22 +3,74 @@ import os
 from dotenv import load_dotenv
 from flask import Blueprint, Flask, jsonify, request
 from mem0 import Memory
+from tenacity import retry, stop_after_attempt, wait_fixed
+from neo4j import GraphDatabase, exceptions
 
 load_dotenv()
 
 app = Flask(__name__)
+
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(5))
+def connect_to_neo4j():
+    url = os.environ.get("NEO4J_URL")
+    username = os.environ.get("NEO4J_USERNAME")
+    password = os.environ.get("NEO4J_PASSWORD")
+    try:
+        driver = GraphDatabase.driver(url, auth=(username, password))
+        driver.verify_connectivity()
+        driver.close()
+    except exceptions.ServiceUnavailable:
+        print("Neo4j is not available yet. Retrying...")
+        raise
+
+# Attempt to connect to Neo4j before initializing the Memory
+connect_to_neo4j()
+
 app.url_map.strict_slashes = False
 
 api = Blueprint("api", __name__, url_prefix="/v1")
 
 config = {
+    "llm": {
+        "provider": "openai",
+        "config": {
+            "model": "gpt-4o",
+            "temperature": 0.2,
+            "max_tokens": 1500,
+        }
+    },
+    "embedder": {
+        "provider": "openai",
+        "config": {
+            "model": "text-embedding-3-large",
+            "embedding_dims": 3072,
+        }
+    },
     "vector_store": {
         "provider": "qdrant",
         "config": {
             "host": os.environ.get("QDRANT_HOST", "localhost"),
             "port": os.environ.get("QDRANT_PORT", 6333),
+            "embedding_model_dims": 3072,
+            "on_disk": True,
         },
     },
+    "graph_store": {
+        "provider": "neo4j",
+        "config": {
+            "url": os.environ.get("NEO4J_URL"),
+            "username": os.environ.get("NEO4J_USERNAME"),
+            "password": os.environ.get("NEO4J_PASSWORD"),
+        },
+        "llm" : {
+            "provider": "openai",
+            "config": {
+                "model": "gpt-4o-mini",
+                "temperature": 0.0,
+            }
+        }
+    },
+    "version": "v1.1"
 }
 
 memory = Memory.from_config(config)
@@ -67,7 +119,6 @@ def search_memories():
         )
     except Exception as e:
         return jsonify({"message": str(e)}), 400
-
 
 @api.route("/memories", methods=["GET"])
 def get_memories():
